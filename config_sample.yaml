@@ -1,0 +1,18 @@
+rules:
+  - origin: Spam? # IMAP origin folder
+    destination: INBOX # IMAP destination folder
+    threshold: 5.0 # Threshold to be considered Spam
+    move_not_spam: true  # If true, move only the emails classified as not Spam. if false move only Spam emails
+
+uid_files_path: ./ # Were to store UID files with last UID processed. Always add trailing dash!
+llm:
+  provider: ollama
+  model_id: gemma3:1b
+
+interval: 60
+concurrency: false
+whitelisted_domains:
+  - gmail.com
+  - hotmail.com
+
+
