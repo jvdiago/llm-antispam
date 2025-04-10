@@ -6,12 +6,12 @@ rules:
 
 uid_files_path: ./ # Were to store UID files with last UID processed. Always add trailing dash!
 llm:
-  provider: ollama
+  provider: ollama # Currently only supported: {ollama, openai, bedrock}
   model_id: gemma3:1b
 
-interval: 60
-concurrency: false
-whitelisted_domains:
+interval: 60 # Time between IMAP searches for new emails
+concurrency: false # True if emails will processed concurrently by the LLM (might cause problems with ollama)
+whitelisted_domains: # Domains that will be ignored (not processed by the program)
   - gmail.com
   - hotmail.com
 
