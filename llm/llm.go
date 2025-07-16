@@ -94,14 +94,19 @@ func NewLLM(llmType LLMType, modelId string) (llms.LLM, error) {
 
 func ClassifyEmail(llm llms.LLM, body string) (float64, string, error) {
 	responseSchema := []outputparser.ResponseSchema{
-		{Name: "SpamScore", Description: "Spam Score as Float between 0 and 10, converted to string"},
+		{Name: "SpamScore", Description: "Spam Score as Float between 0 and 10, less than 5 is considered not Spam, converted to string"},
 		{Name: "Reason", Description: "Brief 1 line sentence explaining the SPAM score assigned"},
 	}
 	parser := outputparser.NewStructured(responseSchema)
 
 	// Construct the prompt by including the email headers and body.
 	prompt := fmt.Sprintf(
-		`You are an Email Spam classifier. Analyze the following email and calculate the SPAM numerical score. Focus on the content and the intent of the email, and verify if they come from well known sources and companies. Check for any links in the body and verify if they are legitimate. The HTML tags and images have been removed for simplicity. Only return the output as specified below.
+		`You are an Email Spam classifier. Analyze the following email and calculate the SPAM numerical score.
+Focus on the content and the intent of the email, and verify if they come from well-known domains and companies.
+Do not categorize as Spam emails from well-known organizations like github.com, meetup.com, etc. or well-known email providers like hotmail.com or gmail.com.
+Check for any links in the body and verify if they are legitimate.
+The HTML tags and images have been removed for simplicity.
+Only return the output as specified below.
 
 Output:
 %s
