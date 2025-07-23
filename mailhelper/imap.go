@@ -72,12 +72,12 @@ func MoveEmails(c *client.Client, seqset *imap.SeqSet, destinationMailbox string
 	}
 	_, err := c.Select(originMailbox, false)
 	if err != nil {
-		return fmt.Errorf("Error opening the mailbox %s in Read-Write: %v", originMailbox, err)
+		return fmt.Errorf("error opening the mailbox %s in Read-Write: %v", originMailbox, err)
 	}
 	// Step 1: Copy the message to the SPAM folder.
 	err = c.Copy(seqset, destinationMailbox)
 	if err != nil {
-		return fmt.Errorf("Error copying message to SPAM: %v", err)
+		return fmt.Errorf("error copying message to SPAM: %v", err)
 	}
 
 	// Step 2: Mark the original message as deleted.
@@ -86,13 +86,13 @@ func MoveEmails(c *client.Client, seqset *imap.SeqSet, destinationMailbox string
 
 	err = c.Store(seqset, item, flags, nil)
 	if err != nil {
-		return fmt.Errorf("Error marking message as deleted: %v", err)
+		return fmt.Errorf("error marking message as deleted: %v", err)
 	}
 
 	// Step 3: Permanently remove (expunge) messages flagged as deleted.
 	err = c.Expunge(nil)
 	if err != nil {
-		return fmt.Errorf("Error expunging messages: %v", err)
+		return fmt.Errorf("error expunging messages: %v", err)
 	}
 	return nil
 }

@@ -140,7 +140,7 @@ func TestCleanEmailBody(t *testing.T) {
 			t.Fatalf("Error writing text part: %v", err)
 		}
 		// Close the multipart writer to finalize the message.
-		writer.Close()
+		writer.Close() //nolint:all
 
 		// Set the email header to indicate a multipart message.
 		ctHeader := fmt.Sprintf("multipart/alternative; boundary=%s", boundary)

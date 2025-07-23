@@ -27,7 +27,7 @@ func ClassifySpam(
 	whitelisted_domains []string,
 	threshold float64,
 	lastProcessedID uint32,
-	llmClassifier llms.LLM,
+	llmClassifier llms.Model,
 	concurrency bool,
 ) (*imap.SeqSet, *imap.SeqSet, uint32, error) {
 	count := 0

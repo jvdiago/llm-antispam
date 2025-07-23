@@ -183,8 +183,8 @@ func TestLastProcessed_NewAndUpdate(t *testing.T) {
 	}
 	filename := tmpFile.Name()
 	// Ensure the file is removed after the test.
-	defer os.Remove(filename)
-	tmpFile.Close()
+	defer os.Remove(filename) //nolint:all
+	tmpFile.Close()           //nolint:all
 
 	// Write initial JSON content to the file.
 	initial := LastProcessed{LastProcessedID: 10, Filename: filename}

@@ -21,7 +21,7 @@ func NewEmail(msg *imap.Message) (*Email, error) {
 	section := &imap.BodySectionName{Peek: false}
 	emailBody := msg.GetBody(section)
 	if emailBody == nil {
-		return nil, fmt.Errorf("Server didn't return message body")
+		return nil, fmt.Errorf("server didn't return message body")
 	}
 
 	// Read the entire raw email into a byte slice.
@@ -82,7 +82,7 @@ func ExtractSpamStatus(email *Email) (float64, error) {
 		// Parse the captured string as a float64.
 		hits, err := strconv.ParseFloat(matches[1], 64)
 		if err != nil {
-			return 0, fmt.Errorf("Error parsing float: %v", err)
+			return 0, fmt.Errorf("error parsing float: %v", err)
 		}
 		return hits, nil
 	}

@@ -56,7 +56,11 @@ func NewConfig(configPath string) (*Config, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer file.Close()
+	defer func() {
+		if err := file.Close(); err != nil {
+			log.Printf("error closing file: %v", err)
+		}
+	}()
 
 	// Init new YAML decode
 	d := yaml.NewDecoder(file)
@@ -104,7 +108,7 @@ func ParseFlags() (string, error) {
 	return configPath, nil
 }
 
-func RunRule(c *client.Client, config Rule, domains []string, llmClassifier llms.LLM, concurrency bool, UidFilesPath string) error {
+func RunRule(c *client.Client, config Rule, domains []string, llmClassifier llms.Model, concurrency bool, UidFilesPath string) error {
 	// Retrieve unread emails from the origin folder.
 	messages, ids, done := FetchUnreadEmails(c, config.Origin)
 
@@ -116,7 +120,7 @@ func RunRule(c *client.Client, config Rule, domains []string, llmClassifier llms
 	spamSeqSet, notSpamSeqSet, lastUid, err := ClassifySpam(
 		messages, ids, domains, config.Threshold, lastProcessed.LastProcessedID, llmClassifier, concurrency)
 	if err != nil {
-		return fmt.Errorf("Error classifying spam: %v", err)
+		return fmt.Errorf("error classifying spam: %v", err)
 	}
 
 	mailSeqSet := spamSeqSet
@@ -139,7 +143,11 @@ func RunRule(c *client.Client, config Rule, domains []string, llmClassifier llms
 	// Update the last processed ID.
 	if lastUid > 0 {
 		lastProcessed.LastProcessedID = lastUid
-		lastProcessed.UpdateLastProcessed()
+		err := lastProcessed.UpdateLastProcessed()
+		if err != nil {
+			log.Printf("Error updating last processed %v", err)
+		}
+
 	}
 	return nil
 }
@@ -188,7 +196,11 @@ func main() {
 	if err != nil {
 		log.Fatal("Error connecting to IMAP server:", err)
 	}
-	defer c.Logout()
+	defer func() {
+		if err := c.Logout(); err != nil {
+			log.Printf("error logging out: %v", err)
+		}
+	}()
 
 	log.Println("Connected to IMAP server successfully!")
 

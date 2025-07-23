@@ -3,8 +3,6 @@ package llm
 import (
 	"context"
 	"fmt"
-	"io"
-	"net/mail"
 	"strconv"
 
 	"github.com/aws/aws-sdk-go-v2/config"
@@ -16,10 +14,6 @@ import (
 	"github.com/tmc/langchaingo/outputparser"
 )
 
-func readEmail(email io.Reader) (*mail.Message, error) {
-	return mail.ReadMessage(email)
-}
-
 // LLMType is an enum representing the supported LLM providers.
 type LLMType int
 
@@ -29,7 +23,7 @@ const (
 	LLMTypeOllama
 )
 
-func LLMFactory(provider string, modelId string) (llms.LLM, error) {
+func LLMFactory(provider string, modelId string) (llms.Model, error) {
 	var providerType LLMType
 	switch provider {
 	case "ollama":
@@ -39,19 +33,19 @@ func LLMFactory(provider string, modelId string) (llms.LLM, error) {
 	case "bedrock":
 		providerType = LLMTypeBedrock
 	default:
-		return nil, fmt.Errorf("Provider %s not found", provider)
+		return nil, fmt.Errorf("provider %s not found", provider)
 	}
 
 	llmClassifier, err := NewLLM(providerType, modelId)
 
 	if err != nil {
-		return nil, fmt.Errorf("Error creating LLM: %v", err)
+		return nil, fmt.Errorf("error creating LLM: %v", err)
 	}
 	return llmClassifier, nil
 
 }
 
-func NewLLM(llmType LLMType, modelId string) (llms.LLM, error) {
+func NewLLM(llmType LLMType, modelId string) (llms.Model, error) {
 	switch llmType {
 	case LLMTypeBedrock:
 		// Load AWS configuration with the desired region.
@@ -92,7 +86,7 @@ func NewLLM(llmType LLMType, modelId string) (llms.LLM, error) {
 	}
 }
 
-func ClassifyEmail(llm llms.LLM, body string) (float64, string, error) {
+func ClassifyEmail(llm llms.Model, body string) (float64, string, error) {
 	responseSchema := []outputparser.ResponseSchema{
 		{Name: "SpamScore", Description: "Spam Score as Float between 0 and 10, less than 5 is considered not Spam, converted to string"},
 		{Name: "Reason", Description: "Brief 1 line sentence explaining the SPAM score assigned"},
@@ -140,7 +134,7 @@ Email Body:
 
 	parsed, err := parser.Parse(choices[0].Content)
 	if err != nil {
-		return 0, "", fmt.Errorf("Error parsing LLM result: %v", err)
+		return 0, "", fmt.Errorf("error parsing LLM result: %v", err)
 	}
 
 	// Assert that parsedAny is a map[string]interface{}
@@ -152,7 +146,7 @@ Email Body:
 	//fmt.Println(resultMap)
 	score, err := strconv.ParseFloat(resultMap["SpamScore"], 64)
 	if err != nil {
-		return 0, "", fmt.Errorf("Error converting score to float: %v", err)
+		return 0, "", fmt.Errorf("error converting score to float: %v", err)
 	}
 
 	reason := resultMap["Reason"]

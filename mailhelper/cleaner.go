@@ -34,7 +34,7 @@ func CleanEmailBody(email *Email) (string, error) {
 	ctHeader := email.GetHeader("Content-Type")
 	mediaType, params, err := mime.ParseMediaType(ctHeader)
 	if err != nil {
-		return "", fmt.Errorf("Error parsing Content-Type header: %v", err)
+		return "", fmt.Errorf("error parsing Content-Type header: %v", err)
 	}
 
 	// If the email is multipart, process each part.
@@ -59,14 +59,13 @@ func CleanEmailBody(email *Email) (string, error) {
 				// Parse the HTML part and extract plain text.
 				doc, err := html.Parse(bytes.NewReader(partData))
 				if err != nil {
-					return "", fmt.Errorf("Error parsing HTML part: %v", err)
+					return "", fmt.Errorf("error parsing HTML part: %v", err)
 				}
 				cleanText := extractText(doc)
 				builder.WriteString(cleanText)
 			} else if strings.Contains(partCt, "text/plain") {
 				// For plain text, print as is.
 				builder.WriteString(string(partData))
-			} else {
 			}
 		}
 	} else {
@@ -78,12 +77,12 @@ func CleanEmailBody(email *Email) (string, error) {
 		if strings.Contains(ctHeader, "text/html") {
 			doc, err := html.Parse(bytes.NewReader(body))
 			if err != nil {
-				return "", fmt.Errorf("Error parsing HTML: %v", err)
+				return "", fmt.Errorf("error parsing HTML: %v", err)
 			}
 			cleanText := extractText(doc)
 			builder.WriteString(cleanText)
 		} else {
-			fmt.Println(body)
+			fmt.Println(string(body))
 		}
 	}
 	return builder.String(), nil
