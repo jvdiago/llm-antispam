@@ -4,6 +4,9 @@ on:
   release:
     types: [published]
 
+permissions:
+  contents: write
+
 jobs:
   build:
     name: Build Binaries
@@ -33,3 +36,5 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: dist/llm-antispam-${{ matrix.goos }}-${{ matrix.goarch }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
