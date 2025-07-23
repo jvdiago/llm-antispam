@@ -7,7 +7,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/bedrockruntime v1.8.1
 	github.com/emersion/go-imap v1.2.1
 	github.com/tmc/langchaingo v0.1.13
-	golang.org/x/net v0.37.0
+	golang.org/x/net v0.38.0
 	gopkg.in/yaml.v2 v2.4.0
 )
 
