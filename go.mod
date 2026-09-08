@@ -1,13 +1,13 @@
 module llm-antispam
 
-go 1.24
+go 1.25.0
 
 require (
 	github.com/aws/aws-sdk-go-v2/config v1.27.12
 	github.com/aws/aws-sdk-go-v2/service/bedrockruntime v1.50.4
 	github.com/emersion/go-imap v1.2.1
 	github.com/tmc/langchaingo v0.1.13
-	golang.org/x/net v0.38.0
+	golang.org/x/net v0.55.0
 	gopkg.in/yaml.v2 v2.4.0
 )
 
@@ -30,5 +30,5 @@ require (
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/pkoukk/tiktoken-go v0.1.6 // indirect
 	golang.org/x/exp v0.0.0-20230713183714-613f0c0eb8a1 // indirect
-	golang.org/x/text v0.23.0 // indirect
+	golang.org/x/text v0.37.0 // indirect
 )
