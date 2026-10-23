@@ -21,6 +21,29 @@ type llmResult struct {
 	sender     string
 }
 
+func CleanMail(email *Email) (string, error) {
+	subject := email.GetSubject()
+	sender, err := email.GetSender()
+
+	if err != nil {
+		return "", fmt.Errorf("error getting sender: %v", err)
+	}
+
+	bodyText, err := CleanEmailBody(email)
+	if err != nil {
+		return "", fmt.Errorf("error cleaning email: %v", err)
+	}
+
+	cleanedMail := fmt.Sprintf(
+		`FROM: %s
+SUBJECT: %s
+
+%s`,
+		sender, subject, bodyText)
+	return cleanedMail, nil
+
+}
+
 func ClassifySpam(
 	messages <-chan *imap.Message,
 	ids []uint32,
@@ -54,8 +77,8 @@ func ClassifySpam(
 			continue
 		}
 
-		subject := email.GetSubject()
 		sender, err := email.GetSender()
+		subject := email.GetSubject()
 
 		if err != nil {
 			log.Printf("Error getting sender: %v", err)
@@ -73,18 +96,11 @@ func ClassifySpam(
 			continue
 		}
 
-		bodyText, err := CleanEmailBody(email)
+		cleanedMail, err := CleanMail(email)
 		if err != nil {
 			log.Printf("Error cleaning email: %v", err)
 			continue
 		}
-
-		cleanedMail := fmt.Sprintf(
-			`FROM: %s
-SUBJECT: %s
-
-%s`,
-			sender, subject, bodyText)
 
 		wg.Add(1)
 		go func() {

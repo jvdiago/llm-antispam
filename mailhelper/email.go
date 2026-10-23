@@ -17,6 +17,16 @@ type Email struct {
 	rawMsg []byte
 }
 
+func NewEmailFromBytes(rawEmail []byte) (*Email, error) {
+	msgReader := bytes.NewReader(rawEmail)
+	parsedMsg, err := mail.ReadMessage(msgReader)
+	if err != nil {
+		return nil, err
+	}
+
+	return &Email{msg: parsedMsg, rawMsg: rawEmail}, nil
+}
+
 func NewEmail(msg *imap.Message) (*Email, error) {
 	section := &imap.BodySectionName{Peek: false}
 	emailBody := msg.GetBody(section)
@@ -29,14 +39,7 @@ func NewEmail(msg *imap.Message) (*Email, error) {
 	if err != nil {
 		return nil, err
 	}
-
-	msgReader := bytes.NewReader(rawEmail)
-	parsedMsg, err := mail.ReadMessage(msgReader)
-	if err != nil {
-		return nil, err
-	}
-
-	return &Email{msg: parsedMsg, rawMsg: rawEmail}, nil
+	return NewEmailFromBytes(rawEmail)
 }
 
 func (m *Email) GetHeaders() mail.Header {

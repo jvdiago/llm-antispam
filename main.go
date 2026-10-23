@@ -1,7 +1,6 @@
 package main
 
 import (
-	"flag"
 	"fmt"
 	"gopkg.in/yaml.v2"
 	"llm-antispam/llm"
@@ -13,6 +12,8 @@ import (
 	"time"
 
 	"github.com/emersion/go-imap/client"
+	"github.com/spf13/cobra"
+
 	"github.com/tmc/langchaingo/llms"
 )
 
@@ -86,26 +87,136 @@ func ValidateConfigPath(path string) error {
 	return nil
 }
 
-// ParseFlags will create and parse the CLI flags
-// and return the path to be used elsewhere
-func ParseFlags() (string, error) {
-	// String that contains the configured configuration path
-	var configPath string
-
-	// Set up a CLI flag called "-config" to allow users
-	// to supply the configuration file
-	flag.StringVar(&configPath, "config", "./config.yaml", "path to config file")
-
-	// Actually parse the flags
-	flag.Parse()
-
-	// Validate the path first
-	if err := ValidateConfigPath(configPath); err != nil {
-		return "", err
+func main() {
+	rootCmd := &cobra.Command{
+		Use:   "llm-antispam",
+		Short: "LLM-based antispam tool",
+		RunE:  runDaemon,
 	}
 
-	// Return the configuration path
-	return configPath, nil
+	scoreCmd := &cobra.Command{
+		Use:   "score <email-file>",
+		Short: "Score a single email file",
+		Args:  cobra.ExactArgs(1),
+		RunE:  runScore,
+	}
+
+	rootCmd.PersistentFlags().StringVarP(&configPathFlag, "config", "c", "./config.yaml", "path to config file")
+	rootCmd.AddCommand(scoreCmd)
+
+	if err := rootCmd.Execute(); err != nil {
+		log.Fatal(err)
+	}
+}
+
+var configPathFlag string
+
+func runDaemon(cmd *cobra.Command, args []string) error {
+	imapServer, exists := os.LookupEnv("IMAP_SERVER")
+	if !exists {
+		log.Fatal("IMAP_SERVER env var not found")
+	}
+	imapUser, exists := os.LookupEnv("IMAP_USER")
+	if !exists {
+		log.Fatal("IMAP_USER env var not found")
+	}
+	imapPassword, exists := os.LookupEnv("IMAP_PASSWORD")
+	if !exists {
+		log.Fatal("IMAP_PASSWORD env var not found")
+	}
+
+	cfg, err := NewConfig(configPathFlag)
+	if err != nil {
+		return err
+	}
+
+	// Create a channel to listen for the SIGTSTP signal.
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, syscall.SIGTSTP, syscall.SIGTERM)
+
+	// Create a ticker to process emails periodically.
+	ticker := time.NewTicker(time.Duration(cfg.Interval) * time.Second)
+	defer ticker.Stop()
+
+	imapConfig := &mailhelper.IMAP{
+		User:     imapUser,
+		Password: imapPassword,
+		Server:   imapServer,
+	}
+
+	// Connect to the IMAP server.
+	c, err := imapConfig.Connect()
+	if err != nil {
+		return fmt.Errorf("error connecting to IMAP server: %w", err)
+	}
+	defer func() {
+		if err := c.Logout(); err != nil {
+			log.Printf("error logging out: %v", err)
+		}
+	}()
+
+	log.Println("Connected to IMAP server successfully!")
+
+	// Run the processing loop until SIGTSTP is received.
+	for {
+		select {
+		case <-sigChan:
+			log.Println("Signal received, shutting down gracefully...")
+			return nil
+		case <-ticker.C:
+			llmClassifier, err := llm.LLMFactory(cfg.LLM.Provider, cfg.LLM.ModelID)
+			if err != nil {
+				return fmt.Errorf("error creating LLM: %w", err)
+			}
+			for _, config := range cfg.Rules {
+				err := RunRule(c, config, cfg.Domains, llmClassifier, cfg.Concurrency, cfg.UidFilesPath)
+				if err != nil {
+					log.Println(err)
+				}
+			}
+		}
+	}
+}
+
+func runScore(cmd *cobra.Command, args []string) error {
+	emailFile := args[0]
+
+	// Read the email file
+	rawEmail, err := os.ReadFile(emailFile)
+	if err != nil {
+		return fmt.Errorf("error reading email file: %w", err)
+	}
+
+	email, err := mailhelper.NewEmailFromBytes(rawEmail)
+	if err != nil {
+		return fmt.Errorf("error parsing email: %w", err)
+	}
+
+	cleanedMail, err := mailhelper.CleanMail(email)
+	if err != nil {
+		return fmt.Errorf("error cleaning email: %w", err)
+	}
+	// Load config to get LLM settings
+	cfg, err := NewConfig(configPathFlag)
+	if err != nil {
+		return fmt.Errorf("error loading config: %w", err)
+	}
+
+	// Create LLM classifier
+	llmClassifier, err := llm.LLMFactory(cfg.LLM.Provider, cfg.LLM.ModelID)
+	if err != nil {
+		return fmt.Errorf("error creating LLM: %w", err)
+	}
+
+	// Classify the email
+	score, reason, err := llm.ClassifyEmail(llmClassifier, cleanedMail)
+	if err != nil {
+		return fmt.Errorf("error classifying email: %w", err)
+	}
+
+	fmt.Printf("spam_score: %.1f\n", score)
+	fmt.Printf("reason: %s\n", reason)
+	return nil
 }
 
 func RunRule(c *client.Client, config Rule, domains []string, llmClassifier llms.Model, concurrency bool, UidFilesPath string) error {
@@ -150,77 +261,4 @@ func RunRule(c *client.Client, config Rule, domains []string, llmClassifier llms
 
 	}
 	return nil
-}
-func main() {
-	imapServer, exists := os.LookupEnv("IMAP_SERVER")
-	if !exists {
-		log.Fatal("IMAP_SERVER env var not found")
-	}
-	imapUser, exists := os.LookupEnv("IMAP_USER")
-	if !exists {
-		log.Fatal("IMAP_USER env var not found")
-	}
-	imapPassword, exists := os.LookupEnv("IMAP_PASSWORD")
-	if !exists {
-		log.Fatal("imap_PASSWORD env var not found")
-	}
-
-	// Generate our config based on the config supplied
-	// by the user in the flags
-	cfgPath, err := ParseFlags()
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	cfg, err := NewConfig(cfgPath)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	// Create a channel to listen for the SIGTSTP signal.
-	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, syscall.SIGTSTP, syscall.SIGTERM)
-
-	// Create a ticker to process emails periodically (e.g., every 300 seconds).
-	ticker := time.NewTicker(time.Duration(cfg.Interval) * time.Second)
-	defer ticker.Stop()
-
-	imapConfig := &mailhelper.IMAP{
-		User:     imapUser,
-		Password: imapPassword,
-		Server:   imapServer,
-	}
-
-	// Connect to the IMAP server.
-	c, err := imapConfig.Connect()
-	if err != nil {
-		log.Fatal("Error connecting to IMAP server:", err)
-	}
-	defer func() {
-		if err := c.Logout(); err != nil {
-			log.Printf("error logging out: %v", err)
-		}
-	}()
-
-	log.Println("Connected to IMAP server successfully!")
-
-	// Run the processing loop until SIGTSTP is received.
-	for {
-		select {
-		case <-sigChan:
-			log.Println("Signal received, shutting down gracefully...")
-			return
-		case <-ticker.C:
-			llmClassifier, err := llm.LLMFactory(cfg.LLM.Provider, cfg.LLM.ModelID)
-			if err != nil {
-				log.Fatalf("Error creating LLM: %v", err)
-			}
-			for _, config := range cfg.Rules {
-				err := RunRule(c, config, cfg.Domains, llmClassifier, cfg.Concurrency, cfg.UidFilesPath)
-				if err != nil {
-					log.Println(err)
-				}
-			}
-		}
-	}
 }
