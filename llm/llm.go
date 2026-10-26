@@ -1,17 +1,15 @@
 package llm
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
-	"strconv"
-
-	"github.com/aws/aws-sdk-go-v2/config"
-	"github.com/aws/aws-sdk-go-v2/service/bedrockruntime"
-	"github.com/tmc/langchaingo/llms"
-	"github.com/tmc/langchaingo/llms/bedrock"
-	"github.com/tmc/langchaingo/llms/ollama"
-	"github.com/tmc/langchaingo/llms/openai"
-	"github.com/tmc/langchaingo/outputparser"
+	"io"
+	"llm-antispam/mailhelper"
+	"net/http"
+	"strings"
+	"time"
 )
 
 // LLMType is an enum representing the supported LLM providers.
@@ -23,133 +21,109 @@ const (
 	LLMTypeOllama
 )
 
-func LLMFactory(provider string, modelId string) (llms.Model, error) {
-	var providerType LLMType
-	switch provider {
-	case "ollama":
-		providerType = LLMTypeOllama
-	case "openai":
-		providerType = LLMTypeOpenAI
-	case "bedrock":
-		providerType = LLMTypeBedrock
-	default:
-		return nil, fmt.Errorf("provider %s not found", provider)
-	}
-
-	llmClassifier, err := NewLLM(providerType, modelId)
-
-	if err != nil {
-		return nil, fmt.Errorf("error creating LLM: %v", err)
-	}
-	return llmClassifier, nil
-
+type systemOneRequest struct {
+	State     mailhelper.Email    `json:"state"`
+	Questions map[string]Question `json:"questions"`
+	Model     string              `json:"model"`
 }
 
-func NewLLM(llmType LLMType, modelId string) (llms.Model, error) {
-	switch llmType {
-	case LLMTypeBedrock:
-		// Load AWS configuration with the desired region.
-		cfg, err := config.LoadDefaultConfig(context.TODO(), config.WithRegion("us-east-1"))
-		if err != nil {
-			return nil, fmt.Errorf("failed to load AWS config: %w", err)
-		}
-		// Create a Bedrock client with the custom configuration.
-		client := bedrockruntime.NewFromConfig(cfg)
-		myLLM, err := bedrock.New(
-			bedrock.WithModel(modelId),
-			bedrock.WithClient(client),
-		)
-		if err != nil {
-			return nil, fmt.Errorf("failed to create Bedrock LLM: %w", err)
-		}
-		return myLLM, nil
-	case LLMTypeOpenAI:
-		// Create an OpenAI LLM.
-		// Make sure your API key is set in the environment or passed as an option.
-		myLLM, err := openai.New(
-			openai.WithModel(modelId),
-			// Optionally, you can provide additional configuration, e.g., API key:
-			// openai.WithAPIKey("your-api-key"),
-		)
-		if err != nil {
-			return nil, fmt.Errorf("failed to create OpenAI LLM: %w", err)
-		}
-		return myLLM, nil
-	case LLMTypeOllama:
-		myLLM, err := ollama.New(ollama.WithModel(modelId))
-		if err != nil {
-			return nil, fmt.Errorf("failed to create Ollama LLM with model ID %s: %w", modelId, err)
-		}
-		return myLLM, nil
-	default:
-		return nil, fmt.Errorf("unsupported LLM type")
+type Question struct {
+	Type         string `json:"type"`
+	Instructions string `json:"instructions"`
+}
+
+type systemOneResponse struct {
+	Answers map[string]Answer `json:"answers"`
+}
+
+type Answer struct {
+	Type string   `json:"type"`
+	Noul *float64 `json:"noul"`
+}
+
+type Client struct {
+	Endpoint   string
+	HTTPClient *http.Client
+	Model      string
+}
+
+func NewClient(baseURL string, model string) *Client {
+	return &Client{
+		Endpoint: strings.TrimRight(baseURL, "/") + "/v1/systemone",
+		HTTPClient: &http.Client{
+			Timeout: 60 * time.Second,
+		},
+		Model: model,
 	}
 }
 
-func ClassifyEmail(llm llms.Model, body string) (float64, string, error) {
-	responseSchema := []outputparser.ResponseSchema{
-		{Name: "SpamScore", Description: "Spam Score as Float between 0 and 10, less than 5 is considered not Spam, converted to string"},
-		{Name: "Reason", Description: "Brief 1 line sentence explaining the SPAM score assigned"},
-	}
-	parser := outputparser.NewStructured(responseSchema)
-
-	// Construct the prompt by including the email headers and body.
-	prompt := fmt.Sprintf(
-		`You are an Email Spam classifier. Analyze the following email and calculate the SPAM numerical score.
+func (c *Client) ClassifyEmail(ctx context.Context, email *mailhelper.Email) (float64, error) {
+	payload := systemOneRequest{
+		Model: c.Model,
+		State: *email,
+		Questions: map[string]Question{
+			"spam": {
+				Type: "noul",
+				Instructions: `Is this email spam? Answer yes if it is unsolicited, deceptive, malicious,
+or bulk promotional email. Answer no if it is legitimate.
 Focus on the content and the intent of the email, and verify if they come from well-known domains and companies.
-Do not categorize as Spam emails from well-known organizations like github.com, meetup.com, etc. or well-known email providers like hotmail.com or gmail.com.
-Check for any links in the body and verify if they are legitimate.
+Do not categorize as Spam emails from well-known organizations like github.com, meetup.com, etc. or well-known email providers
+like hotmail.com or gmail.com. Check for any links in the body and verify if they are legitimate.
 The HTML tags and images have been removed for simplicity.
-Only return the output as specified below.
-
-Output:
-%s
-
-Email Body:
-%s`,
-		parser.GetFormatInstructions(), body,
-	)
-
-	ctx := context.Background()
-	resp, err := llm.GenerateContent(
-		ctx,
-		[]llms.MessageContent{
-			{
-				Role: llms.ChatMessageTypeHuman,
-				Parts: []llms.ContentPart{
-					llms.TextPart(prompt),
-				},
+`,
 			},
 		},
-		llms.WithTemperature(0.1),
+	}
+
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return 0, fmt.Errorf("marshal request: %w", err)
+	}
+	req, err := http.NewRequestWithContext(
+		ctx,
+		http.MethodPost,
+		c.Endpoint,
+		bytes.NewReader(body),
 	)
 	if err != nil {
-		return 0, "", err
+		return 0, fmt.Errorf("create request: %w", err)
 	}
 
-	choices := resp.Choices
-	if len(choices) < 1 {
-		return 0, "", fmt.Errorf("empty response from model")
-	}
+	req.Header.Set("Content-Type", "application/json")
 
-	parsed, err := parser.Parse(choices[0].Content)
+	resp, err := c.HTTPClient.Do(req)
 	if err != nil {
-		return 0, "", fmt.Errorf("error parsing LLM result: %v", err)
+		return 0, fmt.Errorf("call systemone: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		responseBody, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		return 0, fmt.Errorf(
+			"systemone returned HTTP %d: %s",
+			resp.StatusCode,
+			strings.TrimSpace(string(responseBody)),
+		)
 	}
 
-	// Assert that parsedAny is a map[string]interface{}
-	resultMap, ok := parsed.(map[string]string)
+	var result systemOneResponse
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return 0, fmt.Errorf("decode response: %w", err)
+	}
+
+	answer, ok := result.Answers["spam"]
 	if !ok {
-		return 0, "", fmt.Errorf("failed to assert parsed result as map[string]string")
+		return 0, fmt.Errorf(`missing "spam" answer`)
 	}
 
-	//fmt.Println(resultMap)
-	score, err := strconv.ParseFloat(resultMap["SpamScore"], 64)
-	if err != nil {
-		return 0, "", fmt.Errorf("error converting score to float: %v", err)
+	if answer.Noul == nil {
+		return 0, fmt.Errorf(`missing "noul" score`)
 	}
 
-	reason := resultMap["Reason"]
-	return score, reason, nil
+	score := *answer.Noul
+	if score < 0 || score > 1 {
+		return 0, fmt.Errorf("invalid spam score %f", score)
+	}
 
+	return score, nil
 }

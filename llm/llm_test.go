@@ -26,16 +26,13 @@ func (f fakeLLM) Call(ctx context.Context, prompt string, options ...llms.CallOp
 func TestClassifySpam(t *testing.T) {
 	mockLLM := fakeLLM{content: "```json\n{\n        \"SpamScore\": \"10\",\n        \"Reason\": \"SPAM\"\n}```"}
 	// Call the function under test.
-	score, reason, err := ClassifyEmail(mockLLM, "Mock string")
+	score, err := ClassifyEmail(mockLLM, "Mock string")
 	if err != nil {
 		t.Fatalf("ClassifySpam returned error: %v", err)
 	}
 	// Check lastUid equals 103.
 	if score != 10 {
 		t.Errorf("Expected score to be 10, got %f", score)
-	}
-	if reason != "SPAM" {
-		t.Errorf("Expected reason to be SPM, got %s", reason)
 	}
 
 }

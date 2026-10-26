@@ -1,13 +1,10 @@
 package mailhelper
 
 import (
-	"fmt"
+	"context"
 	"sync"
 
 	"github.com/emersion/go-imap"
-	"github.com/tmc/langchaingo/llms"
-
-	"llm-antispam/llm"
 	"log"
 )
 
@@ -21,36 +18,18 @@ type llmResult struct {
 	sender     string
 }
 
-func CleanMail(email *Email) (string, error) {
-	subject := email.GetSubject()
-	sender, err := email.GetSender()
+// ClassifierFunc is a function that classifies an email and returns a spam score and reason.
+type ClassifierFunc func(ctx context.Context, email *Email) (float64, error)
 
-	if err != nil {
-		return "", fmt.Errorf("error getting sender: %v", err)
-	}
-
-	bodyText, err := CleanEmailBody(email)
-	if err != nil {
-		return "", fmt.Errorf("error cleaning email: %v", err)
-	}
-
-	cleanedMail := fmt.Sprintf(
-		`FROM: %s
-SUBJECT: %s
-
-%s`,
-		sender, subject, bodyText)
-	return cleanedMail, nil
-
-}
-
+// ClassifySpam processes email messages and classifies them as spam or not spam.
+// It accepts a classifier function for dependency injection, making it testable.
 func ClassifySpam(
 	messages <-chan *imap.Message,
 	ids []uint32,
 	whitelisted_domains []string,
 	threshold float64,
 	lastProcessedID uint32,
-	llmClassifier llms.Model,
+	classifier ClassifierFunc,
 	concurrency bool,
 ) (*imap.SeqSet, *imap.SeqSet, uint32, error) {
 	count := 0
@@ -77,14 +56,7 @@ func ClassifySpam(
 			continue
 		}
 
-		sender, err := email.GetSender()
-		subject := email.GetSubject()
-
-		if err != nil {
-			log.Printf("Error getting sender: %v", err)
-			continue
-		}
-		whitelisted := IsWhitelistedEmail(sender.Address, whitelisted_domains)
+		whitelisted := IsWhitelistedEmail(email.From, whitelisted_domains)
 
 		if whitelisted {
 			continue
@@ -96,24 +68,18 @@ func ClassifySpam(
 			continue
 		}
 
-		cleanedMail, err := CleanMail(email)
-		if err != nil {
-			log.Printf("Error cleaning email: %v", err)
-			continue
-		}
-
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			score, reason, err := llm.ClassifyEmail(llmClassifier, cleanedMail)
+			ctx := context.Background()
+			score, err := classifier(ctx, email)
 			result := llmResult{
 				score:      score,
 				err:        err,
 				id:         id,
 				spamStatus: spamStatus,
-				reason:     reason,
-				sender:     sender.Address,
-				subject:    subject,
+				sender:     email.From,
+				subject:    email.Subject,
 			}
 			scoreChannel <- result
 		}()

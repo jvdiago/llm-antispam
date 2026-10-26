@@ -6,8 +6,8 @@ rules:
 
 uid_files_path: ./ # Were to store UID files with last UID processed. Always add trailing dash!
 llm:
-  provider: ollama # Currently only supported: {ollama, openai, bedrock}
-  model_id: gemma3:1b
+  url: http://localhost:11434
+  model: "kev:0.8b-q8_0"
 
 interval: 60 # Time between IMAP searches for new emails
 concurrency: false # True if emails will processed concurrently by the LLM (might cause problems with ollama)

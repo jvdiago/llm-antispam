@@ -13,8 +13,12 @@ import (
 )
 
 type Email struct {
-	msg    *mail.Message
-	rawMsg []byte
+	msg     *mail.Message `json:"-"`
+	rawMsg  []byte        `json:"-"`
+	From    string        `json:"from,omitempty"`
+	To      string        `json:"to,omitempty"`
+	Subject string        `json:"subject,omitempty"`
+	Body    string        `json:"body,omitempty"`
 }
 
 func NewEmailFromBytes(rawEmail []byte) (*Email, error) {
@@ -24,9 +28,14 @@ func NewEmailFromBytes(rawEmail []byte) (*Email, error) {
 		return nil, err
 	}
 
-	return &Email{msg: parsedMsg, rawMsg: rawEmail}, nil
-}
+	email := Email{msg: parsedMsg, rawMsg: rawEmail}
+	err = email.ParseEmail()
+	if err != nil {
+		return nil, err
+	}
 
+	return &email, nil
+}
 func NewEmail(msg *imap.Message) (*Email, error) {
 	section := &imap.BodySectionName{Peek: false}
 	emailBody := msg.GetBody(section)
@@ -40,6 +49,30 @@ func NewEmail(msg *imap.Message) (*Email, error) {
 		return nil, err
 	}
 	return NewEmailFromBytes(rawEmail)
+}
+
+func (m *Email) ParseEmail() error {
+	subject := m.GetSubject()
+	sender, err := m.GetSender()
+
+	if err != nil {
+		return fmt.Errorf("error getting sender: %v", err)
+	}
+
+	bodyText, err := CleanEmailBody(m)
+	if err != nil {
+		return fmt.Errorf("error cleaning email: %v", err)
+	}
+
+	if bodyText == "" {
+		return fmt.Errorf("cleaned body is empty")
+	}
+
+	m.Body = bodyText
+	m.Subject = subject
+	m.From = fmt.Sprintf("%s", sender)
+
+	return nil
 }
 
 func (m *Email) GetHeaders() mail.Header {

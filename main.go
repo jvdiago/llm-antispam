@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"gopkg.in/yaml.v2"
 	"llm-antispam/llm"
@@ -13,8 +14,6 @@ import (
 
 	"github.com/emersion/go-imap/client"
 	"github.com/spf13/cobra"
-
-	"github.com/tmc/langchaingo/llms"
 )
 
 // To mock functions in unit testing
@@ -35,8 +34,8 @@ type Config struct {
 }
 
 type LLM struct {
-	Provider string `yaml:"provider"`
-	ModelID  string `yaml:"model_id"`
+	URL   string `yaml:"url"`
+	Model string `yaml:"model"`
 }
 
 // Rule represents each rule in the YAML file.
@@ -164,7 +163,10 @@ func runDaemon(cmd *cobra.Command, args []string) error {
 			log.Println("Signal received, shutting down gracefully...")
 			return nil
 		case <-ticker.C:
-			llmClassifier, err := llm.LLMFactory(cfg.LLM.Provider, cfg.LLM.ModelID)
+			client := llm.NewClient(cfg.LLM.URL, cfg.LLM.Model)
+			// Classify the email
+			llmClassifier := client.ClassifyEmail
+
 			if err != nil {
 				return fmt.Errorf("error creating LLM: %w", err)
 			}
@@ -192,34 +194,25 @@ func runScore(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("error parsing email: %w", err)
 	}
 
-	cleanedMail, err := mailhelper.CleanMail(email)
-	if err != nil {
-		return fmt.Errorf("error cleaning email: %w", err)
-	}
 	// Load config to get LLM settings
 	cfg, err := NewConfig(configPathFlag)
 	if err != nil {
 		return fmt.Errorf("error loading config: %w", err)
 	}
 
-	// Create LLM classifier
-	llmClassifier, err := llm.LLMFactory(cfg.LLM.Provider, cfg.LLM.ModelID)
-	if err != nil {
-		return fmt.Errorf("error creating LLM: %w", err)
-	}
-
+	client := llm.NewClient(cfg.LLM.URL, cfg.LLM.Model)
 	// Classify the email
-	score, reason, err := llm.ClassifyEmail(llmClassifier, cleanedMail)
+	ctx := context.Background()
+	score, err := client.ClassifyEmail(ctx, email)
 	if err != nil {
 		return fmt.Errorf("error classifying email: %w", err)
 	}
 
 	fmt.Printf("spam_score: %.1f\n", score)
-	fmt.Printf("reason: %s\n", reason)
 	return nil
 }
 
-func RunRule(c *client.Client, config Rule, domains []string, llmClassifier llms.Model, concurrency bool, UidFilesPath string) error {
+func RunRule(c *client.Client, config Rule, domains []string, llmClassifier mailhelper.ClassifierFunc, concurrency bool, UidFilesPath string) error {
 	// Retrieve unread emails from the origin folder.
 	messages, ids, done := FetchUnreadEmails(c, config.Origin)
 
