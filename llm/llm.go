@@ -95,8 +95,9 @@ The HTML tags and images have been removed for simplicity.
 	if err != nil {
 		return 0, fmt.Errorf("call systemone: %w", err)
 	}
-	defer resp.Body.Close()
-
+	defer func() {
+		_ = resp.Body.Close()
+	}()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		responseBody, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
 		return 0, fmt.Errorf(
