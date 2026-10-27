@@ -17,9 +17,9 @@ Export this three ENV vars to connect via IMAP
  IMAP_USER=
  IMAP_PASSWORD=
 
-copy the config_sample.yaml, edit it and use the -config flag to run the service
+copy the config_sample.yaml, edit it and use the --config flag to run the service
 
-```llm-antispam -config ./config.yaml```
+```llm-antispam --config ./config.yaml```
 
 The program outputs all the logs to stdout and stderr. It is meant to be run with systemd
 
