@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	"github.com/emersion/go-imap"
-	"github.com/tmc/langchaingo/llms"
 )
 
 // createIMAPMessageWithUID constructs an *imap.Message with the given UID and raw RFC822 content.
@@ -23,29 +22,18 @@ func createIMAPMessageWithUID(uid uint32, raw string) *imap.Message {
 	}
 }
 
-// fakeLLM is a mock implementation of llms.LLM.
-// Its GenerateContent method returns a string representing a score depending on the prompt.
-type fakeLLM struct{}
+// mockClassifierFunc is a mock function that implements ClassifierFunc.
+func mockClassifierFunc(ctx context.Context, email *Email) (float64, error) {
+	content := email.Body + " " + email.Subject
 
-// GenerateContent mocks the LLM call by checking the prompt content.
-func (f fakeLLM) GenerateContent(
-	ctx context.Context, messages []llms.MessageContent, options ...llms.CallOption) (*llms.ContentResponse, error) {
-	var content string
-
-	if strings.Contains(llms.TextContent(messages[0].Parts[0].(llms.TextContent)).Text, "Ham") {
-		content = "```json\n{\n        \"SpamScore\": \"0\",\n        \"Reason\": \"NOTSPAM\"\n}```"
+	if strings.Contains(strings.ToLower(content), "ham") {
+		return 0.1, nil
+	} else if strings.Contains(strings.ToLower(content), "spam") {
+		return 0.9, nil
 	} else {
-		content = "```json\n{\n        \"SpamScore\": \"10\",\n        \"Reason\": \"SPAM\"\n}```"
+		return 0.5, nil
 	}
-	return &llms.ContentResponse{Choices: []*llms.ContentChoice{{Content: content}}}, nil
 }
-
-func (f fakeLLM) Call(ctx context.Context, prompt string, options ...llms.CallOption) (string, error) {
-	return "", nil
-}
-
-// To satisfy the llms.LLM interface, fakeLLM can implement other methods as needed.
-// For our test, only GenerateContent is used via llm.ClassifyEmail.
 
 // TestClassifySpam verifies that ClassifySpam classifies messages correctly.
 func TestClassifySpam(t *testing.T) {
@@ -96,18 +84,16 @@ func TestClassifySpam(t *testing.T) {
 	threshold := 0.5
 	lastProcessedID := uint32(100)
 
-	// Use our fake LLM classifier.
-	mockLLM := fakeLLM{}
-
+	// Use our mock classifier function.
 	// Call the function under test.
-	spamSeqset, notSpamSeqset, lastUid, err := ClassifySpam(messages, ids, whitelistedDomains, threshold, lastProcessedID, mockLLM, true)
+	spamSeqset, notSpamSeqset, lastUid, err := ClassifySpam(messages, ids, whitelistedDomains, threshold, lastProcessedID, mockClassifierFunc, true)
 	if err != nil {
 		t.Fatalf("ClassifySpam returned error: %v", err)
 	}
 
 	// Expected behavior:
 	// - msg1 (UID 101) is processed and classified with score 0.9 (> threshold), so its id (ids[0] = 10) goes to spam.
-	// - msg2 (UID 102) is processed and classified with score 0.3 (<= threshold), so its id (ids[1] = 20) goes to not spam.
+	// - msg2 (UID 102) is processed and classified with score 0.1 (<= threshold), so its id (ids[1] = 20) goes to not spam.
 	// - msg3 is skipped because its UID (100) <= lastProcessedID.
 	// - msg4 is skipped because sender domain is whitelisted.
 	//

@@ -4,35 +4,34 @@ import (
 	"context"
 	"testing"
 
-	"github.com/tmc/langchaingo/llms"
+	"llm-antispam/mailhelper"
 )
 
-// fakeLLM is a mock implementation of llms.LLM.
-// Its GenerateContent method returns a string representing a score depending on the prompt.
-type fakeLLM struct {
-	content string
+// mockClient is a mock implementation of the Client.
+// Its ClassifyEmail method returns a fixed score.
+type mockClient struct {
+	score float64
 }
 
-// GenerateContent mocks the LLM call by checking the prompt content.
-func (f fakeLLM) GenerateContent(
-	ctx context.Context, messages []llms.MessageContent, options ...llms.CallOption) (*llms.ContentResponse, error) {
-	return &llms.ContentResponse{Choices: []*llms.ContentChoice{{Content: f.content}}}, nil
+func (m *mockClient) ClassifyEmail(ctx context.Context, email *mailhelper.Email) (float64, error) {
+	return m.score, nil
 }
 
-func (f fakeLLM) Call(ctx context.Context, prompt string, options ...llms.CallOption) (string, error) {
-	return "", nil
-}
+func TestClassifyEmail(t *testing.T) {
+	mockClient := &mockClient{score: 0.1}
+	email := &mailhelper.Email{
+		From:    "test@example.com",
+		Subject: "Test Email",
+		Body:    "This is a test email.",
+	}
 
-func TestClassifySpam(t *testing.T) {
-	mockLLM := fakeLLM{content: "```json\n{\n        \"SpamScore\": \"10\",\n        \"Reason\": \"SPAM\"\n}```"}
 	// Call the function under test.
-	score, err := ClassifyEmail(mockLLM, "Mock string")
+	score, err := mockClient.ClassifyEmail(context.Background(), email)
 	if err != nil {
-		t.Fatalf("ClassifySpam returned error: %v", err)
+		t.Fatalf("ClassifyEmail returned error: %v", err)
 	}
-	// Check lastUid equals 103.
-	if score != 10 {
-		t.Errorf("Expected score to be 10, got %f", score)
+	// Check score equals 0.1.
+	if score != 0.1 {
+		t.Errorf("Expected score to be 0.1, got %f", score)
 	}
-
 }

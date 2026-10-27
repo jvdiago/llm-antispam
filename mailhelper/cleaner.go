@@ -82,7 +82,7 @@ func CleanEmailBody(email *Email) (string, error) {
 			cleanText := extractText(doc)
 			builder.WriteString(cleanText)
 		} else {
-			fmt.Println(string(body))
+			builder.WriteString(string(body))
 		}
 	}
 	return builder.String(), nil

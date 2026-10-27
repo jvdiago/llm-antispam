@@ -13,12 +13,13 @@ import (
 )
 
 type Email struct {
-	msg     *mail.Message `json:"-"`
-	rawMsg  []byte        `json:"-"`
-	From    string        `json:"from,omitempty"`
-	To      string        `json:"to,omitempty"`
-	Subject string        `json:"subject,omitempty"`
-	Body    string        `json:"body,omitempty"`
+	msg       *mail.Message `json:"-"`
+	rawMsg    []byte        `json:"-"`
+	bodyBytes []byte        `json:"-"`
+	From      string        `json:"from,omitempty"`
+	To        string        `json:"to,omitempty"`
+	Subject   string        `json:"subject,omitempty"`
+	Body      string        `json:"body,omitempty"`
 }
 
 func NewEmailFromBytes(rawEmail []byte) (*Email, error) {
@@ -34,6 +35,9 @@ func NewEmailFromBytes(rawEmail []byte) (*Email, error) {
 		return nil, err
 	}
 
+	// Cache the body bytes for future GetBody() calls
+	email.bodyBytes = []byte(email.Body)
+
 	return &email, nil
 }
 func NewEmail(msg *imap.Message) (*Email, error) {
@@ -43,11 +47,11 @@ func NewEmail(msg *imap.Message) (*Email, error) {
 		return nil, fmt.Errorf("server didn't return message body")
 	}
 
-	// Read the entire raw email into a byte slice.
 	rawEmail, err := io.ReadAll(emailBody)
 	if err != nil {
 		return nil, err
 	}
+
 	return NewEmailFromBytes(rawEmail)
 }
 
@@ -70,7 +74,7 @@ func (m *Email) ParseEmail() error {
 
 	m.Body = bodyText
 	m.Subject = subject
-	m.From = fmt.Sprintf("%s", sender)
+	m.From = sender.Address
 
 	return nil
 }
@@ -103,10 +107,17 @@ func (m *Email) GetRawEmail() []byte {
 }
 
 func (m *Email) GetBody() ([]byte, error) {
+	// Return the cached body bytes if available
+	if len(m.bodyBytes) > 0 {
+		return m.bodyBytes, nil
+	}
+	// Fallback: read from msg.Body if bodyBytes is not set
 	body, err := io.ReadAll(m.msg.Body)
 	if err != nil {
 		return nil, err
 	}
+	// Cache for future calls
+	m.bodyBytes = body
 	return body, nil
 }
 

@@ -176,7 +176,6 @@ func TestCleanEmailBody(t *testing.T) {
 	})
 
 	t.Run("single-part plain text email", func(t *testing.T) {
-		// For non-HTML single-part emails, CleanEmailBody doesn't append the body text (it only prints it).
 		textContent := "Just plain text"
 		contentType := "text/plain; charset=utf-8"
 		email := createEmail(contentType, []byte(textContent))
@@ -185,8 +184,8 @@ func TestCleanEmailBody(t *testing.T) {
 		if err != nil {
 			t.Fatalf("CleanEmailBody returned error: %v", err)
 		}
-		// Expected output is empty because the plain text branch in single-part doesn't write to the builder.
-		expected := ""
+		// The plain text branch in single-part writes the body to the builder.
+		expected := "Just plain text"
 		if result != expected {
 			t.Errorf("Expected %q but got %q", expected, result)
 		}

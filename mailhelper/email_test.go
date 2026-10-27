@@ -35,6 +35,7 @@ func TestNewEmail_Success(t *testing.T) {
 		"Content-Type: text/plain; charset=utf-8\r\n\r\n" +
 		"Hello, world!"
 	msg := createIMAPMessage(raw)
+
 	email, err := NewEmail(msg)
 	if err != nil {
 		t.Fatalf("NewEmail returned error: %v", err)
